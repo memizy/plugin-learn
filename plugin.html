@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Learn Plugin</title>
+
+  <script type="application/oqse-manifest+json">
+  {
+    "id": "https://memizy.github.io/plugin-learn/",
+    "name": "Learn Plugin",
+    "version": "1.0.0",
+    "description": "Browse study set items grouped by topic. Self-assess your knowledge with traffic-light confidence dots.",
+    "author": "Memizy",
+    "license": "MIT",
+    "itemTypes": ["note"],
+    "minItems": 1,
+    "features": ["markdown", "math"]
+  }
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }
+    };
+  </script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --primary: #2c3e50;
+      --accent: #3498db;
+      --bg-light: #f8f9fa;
+      --border: #e9ecef;
+      --text: #2d3436;
+      --code-bg: #f1f3f5;
+
+      --dot-red: #e74c3c;
+      --dot-orange: #e67e22;
+      --dot-yellow: #f1c40f;
+      --dot-green: #2ecc71;
+      --dot-grey: #bdc3c7;
+    }
+
+    body {
+      font-family: 'Roboto', sans-serif;
+      line-height: 1.6;
+      color: var(--text);
+      background-color: #fff;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+
+    h1 {
+      text-align: center;
+      color: var(--primary);
+      font-weight: 700;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 3px solid var(--accent);
+    }
+
+    h2 {
+      color: var(--primary);
+      margin-top: 50px;
+      margin-bottom: 30px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    details {
+      background-color: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      transition: all 0.3s ease;
+    }
+
+    details[open] {
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+      border-left: 5px solid var(--accent);
+    }
+
+    summary {
+      padding: 20px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 1.1rem;
+      list-style: none;
+      position: relative;
+      background-color: var(--bg-light);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    details[open] summary {
+      border-radius: 8px 8px 0 0;
+      border-bottom: 1px solid var(--border);
+      background-color: #fff;
+      color: var(--accent);
+    }
+
+    summary::-webkit-details-marker { display: none; }
+
+    .summary-text {
+      flex-grow: 1;
+      padding-right: 15px;
+    }
+
+    .summary-icon {
+      font-weight: bold;
+      font-size: 1.5rem;
+      color: var(--accent);
+      margin-left: 10px;
+      min-width: 20px;
+      text-align: center;
+    }
+
+    details[open] .summary-icon::after { content: '-'; }
+    details:not([open]) .summary-icon::after { content: '+'; }
+
+    .content {
+      padding: 30px;
+    }
+
+    h3 {
+      color: var(--primary);
+      margin-top: 25px;
+      font-size: 1.15rem;
+      border-bottom: 2px solid var(--bg-light);
+      padding-bottom: 5px;
+    }
+
+    mjx-container[display="true"] {
+      overflow-x: auto;
+      overflow-y: hidden;
+      max-width: 100%;
+      display: block !important;
+    }
+
+    code {
+      background-color: var(--code-bg);
+      padding: 2px 4px;
+      border-radius: 4px;
+      font-family: 'Source Code Pro', monospace;
+      font-size: 0.9em;
+    }
+
+    ul { padding-left: 20px; }
+    li { margin-bottom: 8px; }
+
+    strong { color: var(--primary); }
+
+    /* Controls */
+    .controls-container {
+      background: var(--bg-light);
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+      border: 1px solid var(--border);
+    }
+
+    .controls-row {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 15px;
+    }
+
+    .controls-row:last-child { margin-bottom: 0; }
+
+    select {
+      padding: 10px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      font-size: 1rem;
+      flex-grow: 1;
+      max-width: 500px;
+    }
+
+    button {
+      padding: 10px 20px;
+      background-color: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background-color 0.2s;
+    }
+
+    button:hover { background-color: #2980b9; }
+
+    .finish-row {
+      margin-top: 40px;
+      display: flex;
+      justify-content: center;
+    }
+
+    #finish-btn {
+      background-color: #27ae60;
+      font-size: 1rem;
+      padding: 12px 32px;
+      border-radius: 6px;
+    }
+
+    #finish-btn:hover { background-color: #219150; }
+
+    #finish-btn:disabled {
+      background-color: var(--dot-grey);
+      cursor: default;
+    }
+
+    /* Traffic Lights */
+    .traffic-lights {
+      display: flex;
+      gap: 5px;
+      margin-right: 15px;
+    }
+
+    .dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: transform 0.2s, border-color 0.2s;
+      opacity: 0.3;
+    }
+
+    .dot:hover {
+      transform: scale(1.2);
+      opacity: 0.7;
+    }
+
+    .dot.active {
+      opacity: 1;
+      border-color: #555;
+      transform: scale(1.1);
+    }
+
+    .dot.red    { background-color: var(--dot-red); }
+    .dot.orange { background-color: var(--dot-orange); }
+    .dot.yellow { background-color: var(--dot-yellow); }
+    .dot.green  { background-color: var(--dot-green); }
+
+    /* Filters */
+    .filters {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      flex-wrap: wrap;
+      font-size: 0.9rem;
+    }
+
+    .filter-label { font-weight: bold; margin-right: 5px; }
+
+    .filter-option {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+    }
+
+    .filter-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    @media (max-width: 600px) {
+      .traffic-lights {
+        flex-direction: column;
+        gap: 8px;
+        margin-right: 10px;
+      }
+      .dot { width: 20px; height: 20px; }
+      summary { align-items: flex-start; }
+      .summary-text { padding-top: 0; align-self: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Learn Plugin</h1>
+
+  <div class="controls-container">
+
+    <div class="controls-row">
+      <label for="topic-select"><strong>Topic:</strong></label>
+      <select id="topic-select">
+        <option value="all" selected>All Topics</option>
+      </select>
+    </div>
+
+    <div class="controls-row filters">
+      <span class="filter-label">Show:</span>
+
+      <label class="filter-option">
+        <input type="checkbox" class="filter-cb" value="unmarked" checked>
+        <span class="filter-dot" style="background-color: var(--dot-grey);"></span> Unmarked
+      </label>
+      <label class="filter-option">
+        <input type="checkbox" class="filter-cb" value="red" checked>
+        <span class="filter-dot" style="background-color: var(--dot-red);"></span> Don't Know
+      </label>
+      <label class="filter-option">
+        <input type="checkbox" class="filter-cb" value="orange" checked>
+        <span class="filter-dot" style="background-color: var(--dot-orange);"></span> Partially Know
+      </label>
+      <label class="filter-option">
+        <input type="checkbox" class="filter-cb" value="yellow" checked>
+        <span class="filter-dot" style="background-color: var(--dot-yellow);"></span> Almost Know
+      </label>
+      <label class="filter-option">
+        <input type="checkbox" class="filter-cb" value="green" checked>
+        <span class="filter-dot" style="background-color: var(--dot-green);"></span> Know Well
+      </label>
+
+      <span id="visible-count" style="margin-left: auto; font-weight: 500; color: #7f8c8d;"></span>
+    </div>
+
+    <div class="controls-row" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); align-items: center;">
+      <span class="filter-label">Progress:</span>
+      <span id="progress-text" style="font-size: 0.9rem; color: #7f8c8d;">—</span>
+    </div>
+
+    <div id="standalone-controls" class="controls-row" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);">
+      <span class="filter-label">Saved:</span>
+      <button id="export-btn" style="background-color: #7f8c8d; font-size: 0.9rem; padding: 8px 15px;">Export Progress</button>
+      <button id="import-btn" style="background-color: #7f8c8d; font-size: 0.9rem; padding: 8px 15px;">Import Progress</button>
+    </div>
+
+  </div>
+
+  <div id="content-area">
+    <p style="text-align: center; color: #7f8c8d;">Loading study set…</p>
+  </div>
+
+  <div class="finish-row">
+    <button id="finish-btn" disabled>Finish Session</button>
+  </div>
+
+  <script type="module">
+    import { MemizyPlugin } from 'https://cdn.jsdelivr.net/npm/@memizy/plugin-sdk/dist/index.js';
+
+    // ── SDK Setup ────────────────────────────────────────────────────────────
+    const plugin = new MemizyPlugin({
+      id: 'https://memizy.github.io/plugin-learn/',
+      version: '1.0.0',
+    });
+
+    // ── DOM refs ─────────────────────────────────────────────────────────────
+    const topicSelect         = document.getElementById('topic-select');
+    const contentArea         = document.getElementById('content-area');
+    const filterCBs           = document.querySelectorAll('.filter-cb');
+    const visibleCount        = document.getElementById('visible-count');
+    const progressText        = document.getElementById('progress-text');
+    const finishBtn           = document.getElementById('finish-btn');
+    const standaloneControls  = document.getElementById('standalone-controls');
+    const exportBtn           = document.getElementById('export-btn');
+    const importBtn           = document.getElementById('import-btn');
+
+    // ── Markdown + Math rendering ─────────────────────────────────────────
+    if (window.marked) {
+      marked.setOptions({ breaks: true, gfm: true });
+    }
+
+    function renderMarkdown(text) {
+      if (!window.marked) return text;
+      const blocks = [];
+      const store = m => { blocks.push(m); return 'MATHPH' + (blocks.length - 1) + 'MATHPH'; };
+      let t = text.replace(/\$\$([\s\S]*?)\$\$/g, store);
+      t = t.replace(/\$([^$\n]+?)\$/g, store);
+      t = t.replace(/\\\(([\s\S]*?)\\\)/g, store);
+      let html = marked.parse(t);
+      html = html.replace(/MATHPH(\d+)MATHPH/g, (_, i) => blocks[+i]);
+      return html;
+    }
+
+    // ── Colour → SDK confidence mapping ──────────────────────────────────
+    const COLOR_CONFIDENCE = { red: 1, orange: 1, yellow: 2, green: 3 };
+    const COLOR_CORRECT    = { red: false, orange: false, yellow: true, green: true };
+
+    // ── In-memory progress ────────────────────────────────────────────────
+    // Standalone: also persisted to localStorage per set ID.
+    // Hosted:     session-scoped only (Host owns persistence).
+    const progress = {};
+
+    // ── State ─────────────────────────────────────────────────────────────
+    let allItems = [];
+    let sessionActive = false;
+    let storageKey = null;   // set only in standalone mode
+
+    // ── Standalone persistence helpers ────────────────────────────────────
+    function persistProgress() {
+      if (storageKey) {
+        localStorage.setItem(storageKey, JSON.stringify(progress));
+      }
+    }
+
+    function loadPersistedProgress() {
+      if (!storageKey) return;
+      try {
+        const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
+        Object.assign(progress, saved);
+      } catch { /* ignore malformed data */ }
+    }
+
+    // ── onInit ────────────────────────────────────────────────────────────
+    plugin.onInit(payload => {
+      allItems = payload.items;
+      sessionActive = true;
+      finishBtn.disabled = false;
+
+      // Set title dynamically from set metadata if available
+      const setName = payload.meta?.name ?? payload.settings?.title ?? null;
+      if (setName) {
+        document.title = setName;
+        document.querySelector('h1').textContent = setName;
+      }
+
+      // In standalone mode: derive a per-set storage key and restore saved progress
+      if (plugin.isStandalone()) {
+        const setId = payload.meta?.id
+          ?? new URLSearchParams(location.search).get('set')
+          ?? 'default';
+        storageKey = `memizy_learn_progress::${setId}`;
+        loadPersistedProgress();
+        standaloneControls.style.display = '';
+      }
+
+      populateTopicSelect(allItems);
+      renderAll(allItems);
+    });
+
+    // ── onAborted ────────────────────────────────────────────────────────
+    plugin.onAborted(() => {
+      sessionActive = false;
+      finishBtn.disabled = true;
+    });
+
+    // ── onResumed ────────────────────────────────────────────────────────
+    plugin.onResumed(() => {
+      sessionActive = true;
+    });
+
+    // ── Topic select population ───────────────────────────────────────────
+    function populateTopicSelect(items) {
+      const seen = new Set();
+      const ordered = [];
+      for (const item of items) {
+        const t = item.topic;
+        if (t && !seen.has(t)) { seen.add(t); ordered.push(t); }
+      }
+      ordered.forEach(topic => {
+        const opt = document.createElement('option');
+        opt.value = topic;
+        opt.textContent = topic;
+        topicSelect.appendChild(opt);
+      });
+
+      topicSelect.addEventListener('change', () => {
+        const val = topicSelect.value;
+        const filtered = val === 'all' ? allItems : allItems.filter(i => i.topic === val);
+        renderAll(filtered);
+      });
+    }
+
+    // ── Render all items (grouped by topic) ───────────────────────────────
+    function renderAll(items) {
+      contentArea.innerHTML = '';
+
+      if (!items || items.length === 0) {
+        contentArea.innerHTML = '<p style="text-align:center;color:#7f8c8d;">No items to display.</p>';
+        updateCount();
+        return;
+      }
+
+      // Group by topic while keeping insertion order
+      const groups = new Map();
+      for (const item of items) {
+        const t = item.topic || 'Other';
+        if (!groups.has(t)) groups.set(t, []);
+        groups.get(t).push(item);
+      }
+
+      for (const [topic, groupItems] of groups) {
+        const h2 = document.createElement('h2');
+        h2.textContent = topic || 'Other';
+        contentArea.appendChild(h2);
+
+        for (const item of groupItems) {
+          contentArea.appendChild(buildItemElement(item));
+        }
+      }
+
+      // Typeset math
+      if (window.MathJax) {
+        MathJax.typesetPromise([contentArea]).catch(e => console.warn('MathJax:', e));
+      }
+
+      applyFilters();
+    }
+
+    // ── Build a single <details> element ──────────────────────────────────
+    function buildItemElement(item) {
+      const currentColor = progress[item.id] || 'unmarked';
+
+      const details = document.createElement('details');
+      details.dataset.id    = item.id;
+      details.dataset.color = currentColor;
+
+      // Summary
+      const summary = document.createElement('summary');
+
+      // Traffic lights
+      const lightsDiv = document.createElement('div');
+      lightsDiv.className = 'traffic-lights';
+      lightsDiv.onclick = e => e.preventDefault();
+
+      ['red', 'orange', 'yellow', 'green'].forEach(color => {
+        const dot = document.createElement('div');
+        dot.className = `dot ${color}${currentColor === color ? ' active' : ''}`;
+        dot.title = { red: 'Don\'t Know', orange: 'Partially Know', yellow: 'Almost Know', green: 'Know Well' }[color];
+        dot.onclick = e => { e.stopPropagation(); handleDotClick(item.id, color, details); };
+        lightsDiv.appendChild(dot);
+      });
+
+      const textSpan = document.createElement('span');
+      textSpan.className   = 'summary-text';
+      textSpan.textContent = item.title || 'Untitled';
+
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'summary-icon';
+
+      summary.appendChild(lightsDiv);
+      summary.appendChild(textSpan);
+      summary.appendChild(iconSpan);
+
+      // Content
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'content';
+      contentDiv.innerHTML = renderMarkdown(item.content || '');
+
+      details.appendChild(summary);
+      details.appendChild(contentDiv);
+      return details;
+    }
+
+    // ── Dot click handler ─────────────────────────────────────────────────
+    function handleDotClick(id, color, detailsEl) {
+      if (!sessionActive) return;
+
+      const prev     = detailsEl.dataset.color;
+      const newColor = prev === color ? 'unmarked' : color;
+
+      // Update in-memory state (Host owns persistent storage)
+      if (newColor === 'unmarked') delete progress[id]; else progress[id] = newColor;
+      detailsEl.dataset.color = newColor;
+
+      detailsEl.querySelectorAll('.dot').forEach(dot => {
+        dot.classList.toggle('active', dot.classList.contains(newColor));
+      });
+
+      // Report answer to Host via SDK
+      if (newColor !== 'unmarked') {
+        plugin.answer(id, COLOR_CORRECT[newColor], { confidence: COLOR_CONFIDENCE[newColor] });
+      }
+
+      // Persist to localStorage in standalone mode
+      persistProgress();
+
+      // Push progress to Host HUD
+      const answered = Object.keys(progress).length;
+      plugin.updateProgress(answered, allItems.length);
+      updateProgressText(answered, allItems.length);
+
+      applyFilters();
+    }
+
+    // ── Filter logic ──────────────────────────────────────────────────────
+    function applyFilters() {
+      const active = new Set(
+        Array.from(filterCBs).filter(cb => cb.checked).map(cb => cb.value)
+      );
+      const allDetails = contentArea.querySelectorAll('details');
+      let shown = 0;
+      allDetails.forEach(d => {
+        const vis = active.has(d.dataset.color || 'unmarked');
+        d.style.display = vis ? '' : 'none';
+        if (vis) shown++;
+      });
+      updateCount(shown, allDetails.length);
+    }
+
+    function updateCount(shown, total) {
+      if (shown === undefined) {
+        const all = contentArea.querySelectorAll('details');
+        shown = Array.from(all).filter(d => d.style.display !== 'none').length;
+        total = all.length;
+      }
+      visibleCount.textContent = total !== undefined ? `Showing: ${shown} / ${total}` : '';
+    }
+
+    function updateProgressText(answered, total) {
+      progressText.textContent = `${answered} / ${total} assessed`;
+    }
+
+    filterCBs.forEach(cb => cb.addEventListener('change', applyFilters));
+
+    // ── Export / Import (standalone only) ────────────────────────────────
+    exportBtn.addEventListener('click', () => {
+      const data = JSON.stringify(progress);
+      if (!data || data === '{}') {
+        alert('No progress saved yet — assess at least one item first.');
+        return;
+      }
+      prompt('Copy this text to save or transfer your progress:', data);
+    });
+
+    importBtn.addEventListener('click', () => {
+      const raw = prompt('Paste exported progress data:');
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error();
+        // Replace in-memory progress
+        for (const k of Object.keys(progress)) delete progress[k];
+        Object.assign(progress, parsed);
+        persistProgress();
+        // Re-render from scratch so all dot states reflect imported data
+        topicSelect.value = 'all';
+        renderAll(allItems);
+        const answered = Object.keys(progress).length;
+        updateProgressText(answered, allItems.length);
+      } catch {
+        alert('Error: could not parse progress data. Make sure you pasted the full exported text.');
+      }
+    });
+
+    // ── Finish Session ────────────────────────────────────────────────────
+    finishBtn.addEventListener('click', () => {
+      if (!sessionActive) return;
+      sessionActive = false;
+      finishBtn.disabled = true;
+      const answered = Object.keys(progress).length;
+      plugin.complete({ score: answered / (allItems.length || 1) });
+    });
+  </script>
+</body>
+</html>
