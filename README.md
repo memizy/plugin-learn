@@ -21,8 +21,16 @@ The **Learn Plugin** is designed for seamless reading of text notes (`note` item
 
 ### ✨ Key Features
 * **Traffic-Light Assessment:** Rate your confidence using colors:
-  * 🔴 *Don't Know* * 🟠 *Partially Know* * 🟡 *Almost Know* * 🟢 *Know Well* * **Smart Filtering:** Allows you to hide notes you already know well (Green) and focus only on the problematic ones (Red/Orange).
+  * 🔴 *Don't Know*
+  * 🟠 *Partially Know*
+  * 🟡 *Almost Know*
+  * 🟢 *Know Well*
+* **Live Bucket Statistics:** A real-time dashboard shows exact counts for Unmarked, Red, Orange, Yellow, and Green buckets.
+* **Smart Filtering:** Hide content you already know well (Green) and focus on weak areas (Red/Orange).
 * **Topic Organization:** If your OQSE set contains `topic` metadata, the plugin automatically generates a neat dropdown menu for filtering.
+* **Optimized Open-Item Hierarchy:** Primary question/front content is emphasized while hints are visually de-emphasized for faster scanning.
+* **Progressive Explanations:** Explanations are hidden by default and can be revealed manually; interactive item answers auto-reveal them after evaluation.
+* **Quick-Access Settings Button:** Standalone settings gear is available at the bottom-right for fast deck/progress controls.
 * **Full Formatting Support:** Integrated **Marked.js** and **MathJax 3** ensure that all Markdown and complex LaTeX math/chemical formulas render flawlessly.
 * **Standalone Mode with Memory:** If you open the plugin independently outside the Memizy app, it automatically saves your progress in the browser (`localStorage`). It also provides buttons for exporting and importing your progress.
 
@@ -31,17 +39,38 @@ The **Learn Plugin** is designed for seamless reading of text notes (`note` item
 This plugin requires the study set to contain items of the `note` type.
 
 ```json
-{
-  "id": "https://memizy.github.io/plugin-learn/",
-  "name": "Learn Plugin",
-  "version": "1.0.0",
-  "description": "Browse study set items grouped by topic. Self-assess your knowledge with traffic-light confidence dots.",
-  "author": "Memizy",
-  "license": "MIT",
-  "itemTypes": ["note"],
-  "minItems": 1,
-  "features": ["markdown", "math"]
-}
+  {
+    "$schema": "https://cdn.jsdelivr.net/gh/memizy/oqse-specification@main/schemas/oqse-manifest-v0.1.json",
+    "version": "0.1",
+    "pluginVersion": "0.1.0",
+    "id": "https://memizy.github.io/plugin-learn/",
+    "appName": "Learn Plugin",
+    "description": "Browse study set items grouped by topic. Self-assess your knowledge with traffic-light confidence dots.",
+    "author": {
+      "name": "Memizy"
+    },
+    "license": "MIT",
+    "emoji": "📖",
+    "studyMode": "drill",
+    "capabilities": {
+      "actions": ["render"],
+      "types": [
+        "flashcard",
+        "mcq-single",
+        "mcq-multi",
+        "true-false",
+        "match-pairs",
+        "sort-items",
+        "short-answer",
+        "note"
+      ],
+      "features": [
+        "markdown",
+        "math",
+        "html"
+      ]
+    }
+  }
 
 ```
 
