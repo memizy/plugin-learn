@@ -374,6 +374,61 @@
       margin-top: 10px;
     }
 
+    /* 3D Flashcard Styles */
+    .flashcard-container {
+      perspective: 1000px;
+      margin: 15px 0;
+    }
+
+    .flashcard-inner {
+      display: grid;
+      transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
+      transform-style: preserve-3d;
+      cursor: pointer;
+    }
+
+    .flashcard-container.flipped .flashcard-inner {
+      transform: rotateY(180deg);
+    }
+
+    .flashcard-face {
+      grid-area: 1 / 1;
+      backface-visibility: hidden;
+      padding: 30px 20px;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      background-color: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      min-height: 150px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+    }
+
+    .flashcard-back {
+      transform: rotateY(180deg);
+      background-color: var(--bg-light);
+      border-color: var(--accent);
+    }
+
+    .flashcard-instruction {
+      font-size: 0.85rem;
+      color: #95a5a6;
+      margin-top: 15px;
+      font-weight: normal;
+    }
+
+    /* Match Pairs Styles */
+    .match-merged-text {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed var(--border);
+      color: var(--accent);
+      font-weight: 500;
+    }
+
     @media (max-width: 600px) {
       .traffic-lights {
         flex-direction: column;
@@ -450,6 +505,12 @@
         Unmarked: 0 | Red: 0 | Orange: 0 | Yellow: 0 | Green: 0
       </span>
     </div>
+    <div class="controls-row"
+      style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); align-items: center;">
+      <button id="export-progress-file-btn" style="background-color: #7f8c8d; font-size: 0.9rem; padding: 8px 15px;">
+        Export Progress (.oqsep.json)
+      </button>
+    </div>
 
   </div>
 
@@ -471,6 +532,7 @@
     const visibleCount = document.getElementById('visible-count');
     const progressText = document.getElementById('progress-text');
     const bucketStats = document.getElementById('bucket-stats');
+    const exportProgressFileBtn = document.getElementById('export-progress-file-btn');
 
     const COLOR_TO_BUCKET = { red: 1, orange: 2, yellow: 3, green: 4 };
     const BUCKET_TO_COLOR = { 1: 'red', 2: 'orange', 3: 'yellow', 4: 'green' };
@@ -486,6 +548,7 @@
     let sessionActive = false;
     let topicListenerBound = false;
     let currentSetTitle = 'Learn Plugin';
+    let currentSetId = '';
 
     if (window.marked) {
       marked.setOptions({ breaks: true, gfm: true });
@@ -641,19 +704,29 @@
           wrap.appendChild(hidden);
         }
       } else if (item.type === 'flashcard') {
-        wrap.appendChild(createRichBlock('Front', item.front || ''));
-        const revealBtn = document.createElement('button');
-        revealBtn.textContent = 'Reveal Back';
+        const container = document.createElement('div');
+        container.className = 'flashcard-container';
+
+        const inner = document.createElement('div');
+        inner.className = 'flashcard-inner';
+
+        const front = document.createElement('div');
+        front.className = 'flashcard-face flashcard-front';
+        front.innerHTML = `<div>${renderMarkdown(item.front || '')}</div><div class="flashcard-instruction">Click to flip</div>`;
+
         const back = document.createElement('div');
-        back.style.display = 'none';
-        back.innerHTML = `<h3 style="margin-top:0;">Back</h3>${renderMarkdown(item.back || '')}`;
-        revealBtn.addEventListener('click', () => {
-          const visible = back.style.display !== 'none';
-          back.style.display = visible ? 'none' : '';
-          revealBtn.textContent = visible ? 'Reveal Back' : 'Hide Back';
+        back.className = 'flashcard-face flashcard-back';
+        back.innerHTML = `<div>${renderMarkdown(item.back || '')}</div><div class="flashcard-instruction">Click to flip back</div>`;
+
+        inner.appendChild(front);
+        inner.appendChild(back);
+        container.appendChild(inner);
+
+        container.addEventListener('click', () => {
+          container.classList.toggle('flipped');
         });
-        wrap.appendChild(revealBtn);
-        wrap.appendChild(back);
+
+        wrap.appendChild(container);
       } else if (item.type === 'true-false') {
         wrap.appendChild(createRichBlock('Question', item.question || ''));
         [true, false].forEach(value => {
@@ -786,10 +859,24 @@
         leftEntries.forEach(entry => {
           const row = document.createElement('button');
           row.className = 'option-btn';
-          row.innerHTML = renderMarkdown(entry.text || '');
+          row.dataset.origHtml = renderMarkdown(entry.text || '');
+          row.innerHTML = row.dataset.origHtml;
           row.dataset.leftIdx = String(entry.originalIndex);
           row.addEventListener('click', () => {
-            current.left = entry.originalIndex;
+            const leftIdx = entry.originalIndex;
+            const existingRightIdx = links[leftIdx];
+
+            if (existingRightIdx !== undefined) {
+              const oldRight = rightList.querySelector(`[data-right-idx="${existingRightIdx}"]`);
+              if (oldRight) oldRight.style.display = '';
+              delete links[leftIdx];
+              row.innerHTML = row.dataset.origHtml;
+              row.classList.remove('selected', 'correct', 'incorrect');
+              current.left = null;
+              return;
+            }
+
+            current.left = leftIdx;
             leftList.querySelectorAll('button').forEach(btn => {
               btn.classList.remove('selected');
             });
@@ -809,9 +896,23 @@
           row.dataset.rightIdx = String(entry.originalIndex);
           row.addEventListener('click', () => {
             if (current.left === null) return;
-            links[current.left] = entry.originalIndex;
+
             const leftBtn = leftList.querySelector(`[data-left-idx="${current.left}"]`);
-            if (leftBtn) leftBtn.classList.remove('selected');
+
+            if (links[current.left] !== undefined) {
+              const oldRight = rightList.querySelector(`[data-right-idx="${links[current.left]}"]`);
+              if (oldRight) oldRight.style.display = '';
+            }
+
+            links[current.left] = entry.originalIndex;
+
+            if (leftBtn) {
+              leftBtn.innerHTML = `${leftBtn.dataset.origHtml}<div class="match-merged-text">➔ ${renderMarkdown(entry.text || '')}</div>`;
+              leftBtn.classList.remove('selected', 'incorrect');
+              leftBtn.classList.add('correct');
+            }
+
+            row.style.display = 'none';
             current.left = null;
           });
           rightList.appendChild(row);
@@ -1071,6 +1172,33 @@
 
     filterCBs.forEach(cb => cb.addEventListener('change', applyFilters));
 
+    exportProgressFileBtn.addEventListener('click', () => {
+      const setId = currentSetId
+        || sdk.session?.setMeta?.id
+        || sdk.store.getMeta?.()?.id
+        || '';
+      const payload = {
+        $schema: 'https://cdn.jsdelivr.net/gh/memizy/oqse-specification@main/schemas/oqse-progress-v0.1.json',
+        version: '0.1',
+        meta: {
+          setId,
+          exportedAt: new Date().toISOString(),
+          algorithm: 'leitner',
+        },
+        records: sdk.store.getProgress() || {},
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const safeName = String(currentSetTitle || 'memizy-progress').replace(/[^\w.-]+/g, '-');
+      a.href = url;
+      a.download = `${safeName}.oqsep.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+
     sdk.onSessionAborted(() => {
       sessionActive = false;
     });
@@ -1079,6 +1207,7 @@
       const payload = sdk.session;
       if (!payload) return;
       allItems = payload.items || [];
+      currentSetId = payload.setMeta?.id || sdk.store.getMeta?.()?.id || '';
       syncProgressSnapshot();
       populateTopicSelect(allItems);
       renderAll(allItems);
@@ -1092,7 +1221,8 @@
         allItems = session.items || [];
         sessionActive = true;
 
-        currentSetTitle = session.meta?.title ?? session.meta?.name ?? session.settings?.title ?? currentSetTitle;
+        currentSetId = session.setMeta?.id || sdk.store.getMeta?.()?.id || '';
+        currentSetTitle = session.setMeta?.title ?? session.setMeta?.name ?? session.settings?.title ?? currentSetTitle;
         document.title = currentSetTitle;
         document.querySelector('h1').textContent = currentSetTitle;
 
