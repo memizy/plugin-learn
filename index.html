@@ -495,11 +495,6 @@
 
     <div class="controls-row"
       style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); align-items: center;">
-      <span class="filter-label">Progress:</span>
-      <span id="progress-text" style="font-size: 0.9rem; color: #7f8c8d;">—</span>
-    </div>
-    <div class="controls-row"
-      style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); align-items: center;">
       <span class="filter-label">Buckets:</span>
       <span id="bucket-stats" style="font-size: 0.9rem; color: #7f8c8d;">
         Unmarked: 0 | Red: 0 | Orange: 0 | Yellow: 0 | Green: 0
@@ -530,7 +525,6 @@
     const contentArea = document.getElementById('content-area');
     const filterCBs = document.querySelectorAll('.filter-cb');
     const visibleCount = document.getElementById('visible-count');
-    const progressText = document.getElementById('progress-text');
     const bucketStats = document.getElementById('bucket-stats');
     const exportProgressFileBtn = document.getElementById('export-progress-file-btn');
 
@@ -581,10 +575,6 @@
 
     function bucketToColor(bucket) {
       return BUCKET_TO_COLOR[bucket] || 'unmarked';
-    }
-
-    function getAssessedCount() {
-      return Object.values(progress).filter(record => record && record.bucket >= 1 && record.bucket <= 4).length;
     }
 
     function syncProgressSnapshot() {
@@ -1108,8 +1098,6 @@
         dot.classList.toggle('active', dot.classList.contains(color));
       });
 
-      const answered = getAssessedCount();
-      updateProgressText(answered, allItems.length);
       updateBucketStats();
       applyFilters();
     }
@@ -1166,10 +1154,6 @@
       visibleCount.textContent = total !== undefined ? `Showing: ${shown} / ${total}` : '';
     }
 
-    function updateProgressText(answered, total) {
-      progressText.textContent = `${answered} / ${total} assessed`;
-    }
-
     filterCBs.forEach(cb => cb.addEventListener('change', applyFilters));
 
     exportProgressFileBtn.addEventListener('click', () => {
@@ -1211,7 +1195,6 @@
       syncProgressSnapshot();
       populateTopicSelect(allItems);
       renderAll(allItems);
-      updateProgressText(getAssessedCount(), allItems.length);
       updateBucketStats();
     });
 
@@ -1229,7 +1212,6 @@
         syncProgressSnapshot();
         populateTopicSelect(allItems);
         renderAll(allItems);
-        updateProgressText(getAssessedCount(), allItems.length);
         updateBucketStats();
       } catch (error) {
         console.error(error);
