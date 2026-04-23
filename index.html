@@ -7,15 +7,23 @@
 
   <script type="application/oqse-manifest+json">
   {
-    "id": "https://memizy.github.io/plugin-learn/",
-    "name": "Learn Plugin",
-    "version": "1.0.0",
-    "description": "Browse study set items grouped by topic. Self-assess your knowledge with traffic-light confidence dots.",
-    "author": "Memizy",
+    "$schema": "https://cdn.jsdelivr.net/gh/memizy/oqse-specification@main/schemas/oqse-manifest-v0.1.json",
+    "version": "0.1",
+    "pluginVersion": "0.1.0",
+    "id": "https://memizy.github.io/plugin-let-me-in/",
+    "appName": "Let Me In!",
+    "description": "A 3D FPS + Tower Defense + Quiz game where you defend a library by answering questions to earn money for towers.",
+    "author": {
+      "name": "Memizy"
+    },
     "license": "MIT",
-    "itemTypes": ["note"],
-    "minItems": 1,
-    "features": ["markdown", "math"]
+    "emoji": "🏰",
+    "studyMode": "game",
+    "questionDensity": "medium",
+    "capabilities": {
+      "actions": ["render"],
+      "types": ["mcq-single"]
+    }
   }
   </script>
 
