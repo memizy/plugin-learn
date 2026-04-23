@@ -3,7 +3,7 @@
 # 🚦 Learn Plugin
 **Self-Assessment Study Plugin for the Memizy Ecosystem**
 
-![Version](https://img.shields.io/badge/Version-1.0.0-blue?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-0.1.0-blue?style=for-the-badge)
 ![Supported Items](https://img.shields.io/badge/Supports-note-blueviolet?style=for-the-badge)
 ![Features](https://img.shields.io/badge/Features-Markdown%20%7C%20Math-success?style=for-the-badge)
 
