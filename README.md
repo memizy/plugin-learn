@@ -13,6 +13,11 @@ Official learning plugin for reading and reviewing study notes in the OQSE forma
 
 </div>
 
+<br>
+
+[![Test with Test Suite](https://img.shields.io/badge/📚_Test-With_Test_Suite-2ea44f?style=for-the-badge)](https://memizy.github.io/plugin-learn/?set=https://cdn.jsdelivr.net/gh/memizy/set-test-suite@main/data.oqse.json)
+[![Open Empty Sandbox](https://img.shields.io/badge/⚙️_Open-Empty_Sandbox-6e7681?style=for-the-badge)](https://memizy.github.io/plugin-learn/)
+
 ---
 
 ## 📖 About the Plugin
