@@ -425,15 +425,13 @@
   </div>
 
   <script type="module">
-    import { MemizyPlugin } from 'https://cdn.jsdelivr.net/npm/@memizy/plugin-sdk/dist/index.js';
+    import { MemizySDK } from 'https://cdn.jsdelivr.net/npm/@memizy/plugin-sdk/dist/index.js';
 
-    // ── SDK Setup ────────────────────────────────────────────────────────────
-    const plugin = new MemizyPlugin({
+    const sdk = new MemizySDK({
       id: 'https://memizy.github.io/plugin-learn/',
       version: '1.0.0',
     });
 
-    // ── DOM refs ─────────────────────────────────────────────────────────────
     const topicSelect = document.getElementById('topic-select');
     const contentArea = document.getElementById('content-area');
     const filterCBs = document.querySelectorAll('.filter-cb');
@@ -444,16 +442,34 @@
     const exportBtn = document.getElementById('export-btn');
     const importBtn = document.getElementById('import-btn');
 
-    // ── Markdown + Math rendering ─────────────────────────────────────────
+    const COLOR_TO_BUCKET = { red: 1, orange: 2, yellow: 3, green: 4 };
+    const BUCKET_TO_COLOR = { 1: 'red', 2: 'orange', 3: 'yellow', 4: 'green' };
+    const COLOR_LABEL = {
+      red: 'Don\'t Know',
+      orange: 'Partially Know',
+      yellow: 'Almost Know',
+      green: 'Know Well',
+    };
+
+    const progress = {};
+    let allItems = [];
+    let sessionActive = false;
+    let topicListenerBound = false;
+    let currentSetTitle = 'Learn Plugin';
+
     if (window.marked) {
       marked.setOptions({ breaks: true, gfm: true });
     }
 
     function renderMarkdown(text) {
-      if (!window.marked) return text;
+      const input = String(text || '');
+      if (!window.marked) return input;
       const blocks = [];
-      const store = m => { blocks.push(m); return 'MATHPH' + (blocks.length - 1) + 'MATHPH'; };
-      let t = text.replace(/\$\$([\s\S]*?)\$\$/g, store);
+      const store = m => {
+        blocks.push(m);
+        return 'MATHPH' + (blocks.length - 1) + 'MATHPH';
+      };
+      let t = input.replace(/\$\$([\s\S]*?)\$\$/g, store);
       t = t.replace(/\$([^$\n]+?)\$/g, store);
       t = t.replace(/\\\(([\s\S]*?)\\\)/g, store);
       let html = marked.parse(t);
@@ -461,80 +477,344 @@
       return html;
     }
 
-    // ── Colour → SDK confidence mapping ──────────────────────────────────
-    const COLOR_CONFIDENCE = { red: 1, orange: 1, yellow: 2, green: 3 };
-    const COLOR_CORRECT = { red: false, orange: false, yellow: true, green: true };
+    function bucketToColor(bucket) {
+      return BUCKET_TO_COLOR[bucket] || 'unmarked';
+    }
 
-    // ── In-memory progress ────────────────────────────────────────────────
-    // Standalone: also persisted to localStorage per set ID.
-    // Hosted:     session-scoped only (Host owns persistence).
-    const progress = {};
+    function getAssessedCount() {
+      return Object.values(progress).filter(record => record && record.bucket >= 1 && record.bucket <= 4).length;
+    }
 
-    // ── State ─────────────────────────────────────────────────────────────
-    let allItems = [];
-    let sessionActive = false;
-    let storageKey = null;   // set only in standalone mode
+    function syncProgressSnapshot() {
+      const snap = sdk.store.getProgress() || {};
+      for (const key of Object.keys(progress)) delete progress[key];
+      Object.assign(progress, snap);
+    }
 
-    // ── Standalone persistence helpers ────────────────────────────────────
-    function persistProgress() {
-      if (storageKey) {
-        localStorage.setItem(storageKey, JSON.stringify(progress));
+    function createRichBlock(label, value) {
+      const wrap = document.createElement('div');
+      wrap.style.marginTop = '14px';
+      const title = document.createElement('h3');
+      title.textContent = label;
+      title.style.marginTop = '0';
+      const body = document.createElement('div');
+      body.innerHTML = renderMarkdown(value || '');
+      wrap.appendChild(title);
+      wrap.appendChild(body);
+      return wrap;
+    }
+
+    function addHintsAndExplanation(item, container) {
+      if (Array.isArray(item.hints) && item.hints.length > 0) {
+        const hintsWrap = document.createElement('div');
+        hintsWrap.style.marginTop = '18px';
+        const hintsTitle = document.createElement('h3');
+        hintsTitle.textContent = 'Hints';
+        hintsTitle.style.marginTop = '0';
+        hintsWrap.appendChild(hintsTitle);
+
+        item.hints.forEach((hintText, idx) => {
+          const hintDetails = document.createElement('details');
+          hintDetails.style.marginBottom = '10px';
+          const summary = document.createElement('summary');
+          summary.textContent = `Hint ${idx + 1}`;
+          const content = document.createElement('div');
+          content.style.padding = '12px 16px';
+          content.innerHTML = renderMarkdown(hintText || '');
+          hintDetails.appendChild(summary);
+          hintDetails.appendChild(content);
+          hintsWrap.appendChild(hintDetails);
+        });
+
+        container.appendChild(hintsWrap);
+      }
+
+      if (item.explanation) {
+        container.appendChild(createRichBlock('Explanation', item.explanation));
       }
     }
 
-    function loadPersistedProgress() {
-      if (!storageKey) return;
-      try {
-        const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
-        Object.assign(progress, saved);
-      } catch { /* ignore malformed data */ }
+    function showResult(target, ok, message) {
+      target.style.marginTop = '10px';
+      target.style.fontWeight = '500';
+      target.style.color = ok ? '#27ae60' : '#c0392b';
+      target.textContent = message;
     }
 
-    // ── onInit ────────────────────────────────────────────────────────────
-    plugin.onInit(payload => {
-      allItems = payload.items;
-      sessionActive = true;
-      finishBtn.disabled = false;
+    function createInteractiveBody(item) {
+      const wrap = document.createElement('div');
+      wrap.style.display = 'grid';
+      wrap.style.gap = '12px';
 
-      // Set title dynamically from set metadata if available
-      const setName = payload.meta?.name ?? payload.settings?.title ?? null;
-      if (setName) {
-        document.title = setName;
-        document.querySelector('h1').textContent = setName;
+      const result = document.createElement('div');
+
+      if (item.type === 'note') {
+        wrap.appendChild(createRichBlock(item.title || 'Note', item.content || ''));
+        if (item.hiddenContent) {
+          const revealBtn = document.createElement('button');
+          revealBtn.textContent = 'Reveal Hidden Content';
+          const hidden = document.createElement('div');
+          hidden.style.display = 'none';
+          hidden.style.marginTop = '10px';
+          hidden.innerHTML = renderMarkdown(item.hiddenContent);
+          revealBtn.addEventListener('click', () => {
+            const visible = hidden.style.display !== 'none';
+            hidden.style.display = visible ? 'none' : '';
+            revealBtn.textContent = visible ? 'Reveal Hidden Content' : 'Hide Hidden Content';
+          });
+          wrap.appendChild(revealBtn);
+          wrap.appendChild(hidden);
+        }
+      } else if (item.type === 'flashcard') {
+        wrap.appendChild(createRichBlock('Front', item.front || ''));
+        const revealBtn = document.createElement('button');
+        revealBtn.textContent = 'Reveal Back';
+        const back = document.createElement('div');
+        back.style.display = 'none';
+        back.innerHTML = `<h3 style="margin-top:0;">Back</h3>${renderMarkdown(item.back || '')}`;
+        revealBtn.addEventListener('click', () => {
+          const visible = back.style.display !== 'none';
+          back.style.display = visible ? 'none' : '';
+          revealBtn.textContent = visible ? 'Reveal Back' : 'Hide Back';
+        });
+        wrap.appendChild(revealBtn);
+        wrap.appendChild(back);
+      } else if (item.type === 'true-false') {
+        wrap.appendChild(createRichBlock('Question', item.question || ''));
+        [true, false].forEach(value => {
+          const btn = document.createElement('button');
+          btn.textContent = value ? 'True' : 'False';
+          btn.addEventListener('click', () => {
+            const ok = item.answer === value;
+            btn.style.backgroundColor = ok ? '#2ecc71' : '#e74c3c';
+            showResult(result, ok, ok ? 'Correct.' : 'Incorrect.');
+          });
+          wrap.appendChild(btn);
+        });
+      } else if (item.type === 'mcq-single') {
+        wrap.appendChild(createRichBlock('Question', item.question || ''));
+        (item.options || []).forEach((opt, idx) => {
+          const optBtn = document.createElement('button');
+          optBtn.style.textAlign = 'left';
+          optBtn.innerHTML = renderMarkdown(opt || '');
+          optBtn.addEventListener('click', () => {
+            const all = wrap.querySelectorAll('[data-mcq-option]');
+            all.forEach(el => (el.style.backgroundColor = ''));
+            const ok = idx === item.correctIndex;
+            optBtn.style.backgroundColor = ok ? '#2ecc71' : '#e74c3c';
+            showResult(result, ok, ok ? 'Correct.' : 'Incorrect.');
+          });
+          optBtn.dataset.mcqOption = '1';
+          wrap.appendChild(optBtn);
+        });
+      } else if (item.type === 'mcq-multi') {
+        wrap.appendChild(createRichBlock('Question', item.question || ''));
+        const selected = new Set();
+        (item.options || []).forEach((opt, idx) => {
+          const row = document.createElement('label');
+          row.style.display = 'flex';
+          row.style.alignItems = 'center';
+          row.style.gap = '8px';
+          row.style.padding = '6px 0';
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.addEventListener('change', () => {
+            if (cb.checked) selected.add(idx);
+            else selected.delete(idx);
+          });
+          const text = document.createElement('span');
+          text.innerHTML = renderMarkdown(opt || '');
+          row.appendChild(cb);
+          row.appendChild(text);
+          row.dataset.multiOption = String(idx);
+          wrap.appendChild(row);
+        });
+        const checkBtn = document.createElement('button');
+        checkBtn.textContent = 'Check';
+        checkBtn.addEventListener('click', () => {
+          const correct = new Set(item.correctIndices || []);
+          let allCorrect = selected.size === correct.size;
+          wrap.querySelectorAll('[data-multi-option]').forEach(row => {
+            const idx = Number(row.dataset.multiOption);
+            const isChosen = selected.has(idx);
+            const isCorrect = correct.has(idx);
+            row.style.backgroundColor = isChosen ? (isCorrect ? 'rgba(46, 204, 113, 0.25)' : 'rgba(231, 76, 60, 0.25)') : '';
+            if (isChosen !== isCorrect) allCorrect = false;
+          });
+          showResult(result, allCorrect, allCorrect ? 'Correct selection set.' : 'Selection set is not fully correct.');
+        });
+        wrap.appendChild(checkBtn);
+      } else if (item.type === 'short-answer') {
+        wrap.appendChild(createRichBlock('Question', item.question || ''));
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Type your answer...';
+        input.style.padding = '10px';
+        input.style.borderRadius = '4px';
+        input.style.border = '1px solid var(--border)';
+        const checkBtn = document.createElement('button');
+        checkBtn.textContent = 'Check';
+        checkBtn.addEventListener('click', () => {
+          const trimWhitespace = item.trimWhitespace !== false;
+          const caseSensitive = item.caseSensitive === true;
+          const normalize = value => {
+            let next = String(value ?? '');
+            if (trimWhitespace) next = next.trim();
+            if (!caseSensitive) next = next.toLowerCase();
+            return next;
+          };
+          const expectedRaw = Array.isArray(item.answers)
+            ? item.answers
+            : (item.answer ? [item.answer] : []);
+          const expected = expectedRaw.map(normalize);
+          const guess = normalize(input.value);
+          const ok = expected.includes(guess);
+          input.style.borderColor = ok ? '#2ecc71' : '#e74c3c';
+          showResult(result, ok, ok ? 'Correct.' : 'Not a matching answer.');
+        });
+        wrap.appendChild(input);
+        wrap.appendChild(checkBtn);
+      } else if (item.type === 'match-pairs') {
+        wrap.appendChild(createRichBlock('Question', item.question || 'Match pairs:'));
+        const leftTitle = document.createElement('h3');
+        leftTitle.style.margin = '0';
+        leftTitle.textContent = 'Prompts';
+        wrap.appendChild(leftTitle);
+
+        const current = { left: null };
+        const links = {};
+        const leftList = document.createElement('div');
+        const rightList = document.createElement('div');
+        leftList.style.display = 'grid';
+        rightList.style.display = 'grid';
+        leftList.style.gap = '6px';
+        rightList.style.gap = '6px';
+
+        (item.prompts || []).forEach((prompt, idx) => {
+          const row = document.createElement('button');
+          row.style.textAlign = 'left';
+          row.innerHTML = renderMarkdown(prompt || '');
+          row.dataset.leftIdx = String(idx);
+          row.addEventListener('click', () => {
+            current.left = idx;
+            leftList.querySelectorAll('button').forEach(btn => {
+              btn.style.outline = '';
+            });
+            row.style.outline = '2px solid #3498db';
+          });
+          leftList.appendChild(row);
+        });
+
+        const rightTitle = document.createElement('h3');
+        rightTitle.style.margin = '6px 0 0';
+        rightTitle.textContent = 'Matches';
+
+        (item.matches || []).forEach((matchText, rightIdx) => {
+          const row = document.createElement('button');
+          row.style.textAlign = 'left';
+          row.innerHTML = renderMarkdown(matchText || '');
+          row.dataset.rightIdx = String(rightIdx);
+          row.addEventListener('click', () => {
+            if (current.left === null) return;
+            links[current.left] = rightIdx;
+            const leftBtn = leftList.querySelector(`[data-left-idx="${current.left}"]`);
+            if (leftBtn) leftBtn.style.outline = '';
+            current.left = null;
+            row.textContent = `${rightIdx + 1}. ${matchText}`;
+          });
+          rightList.appendChild(row);
+        });
+
+        const checkBtn = document.createElement('button');
+        checkBtn.textContent = 'Check';
+        checkBtn.addEventListener('click', () => {
+          let ok = true;
+          leftList.querySelectorAll('button').forEach(btn => {
+            const leftIdx = Number(btn.dataset.leftIdx);
+            const chosenRight = links[leftIdx];
+            const isCorrect = chosenRight === leftIdx;
+            btn.style.backgroundColor = typeof chosenRight === 'number'
+              ? (isCorrect ? '#2ecc71' : '#e74c3c')
+              : '';
+            if (!isCorrect) ok = false;
+          });
+          showResult(result, ok, ok ? 'All pairs are correct.' : 'Some matches are incorrect.');
+        });
+
+        wrap.appendChild(leftList);
+        wrap.appendChild(rightTitle);
+        wrap.appendChild(rightList);
+        wrap.appendChild(checkBtn);
+      } else if (item.type === 'sort-items') {
+        wrap.appendChild(createRichBlock('Question', item.question || 'Sort items:'));
+        const ordered = [...(item.items || [])];
+        const shuffled = [...ordered].sort(() => Math.random() - 0.5);
+        const list = document.createElement('div');
+        list.style.display = 'grid';
+        list.style.gap = '8px';
+
+        function rerenderList() {
+          list.innerHTML = '';
+          shuffled.forEach((entry, idx) => {
+            const row = document.createElement('div');
+            row.style.display = 'grid';
+            row.style.gridTemplateColumns = '1fr auto auto';
+            row.style.gap = '8px';
+            row.style.alignItems = 'center';
+            const text = document.createElement('div');
+            text.innerHTML = renderMarkdown(entry || '');
+            const up = document.createElement('button');
+            up.textContent = '↑';
+            up.style.padding = '6px 10px';
+            const down = document.createElement('button');
+            down.textContent = '↓';
+            down.style.padding = '6px 10px';
+            up.addEventListener('click', () => {
+              if (idx === 0) return;
+              [shuffled[idx - 1], shuffled[idx]] = [shuffled[idx], shuffled[idx - 1]];
+              rerenderList();
+            });
+            down.addEventListener('click', () => {
+              if (idx === shuffled.length - 1) return;
+              [shuffled[idx + 1], shuffled[idx]] = [shuffled[idx], shuffled[idx + 1]];
+              rerenderList();
+            });
+            row.appendChild(text);
+            row.appendChild(up);
+            row.appendChild(down);
+            list.appendChild(row);
+          });
+        }
+
+        rerenderList();
+        const checkBtn = document.createElement('button');
+        checkBtn.textContent = 'Check';
+        checkBtn.addEventListener('click', () => {
+          const ok = shuffled.every((entry, idx) => entry === ordered[idx]);
+          showResult(result, ok, ok ? 'Order is correct.' : 'Order is not correct yet.');
+        });
+        wrap.appendChild(list);
+        wrap.appendChild(checkBtn);
+      } else {
+        if (item.content) wrap.appendChild(createRichBlock(item.title || item.type, item.content));
+        else wrap.appendChild(createRichBlock('Item', 'Unsupported item type payload.'));
       }
 
-      // In standalone mode: derive a per-set storage key and restore saved progress
-      if (plugin.isStandalone()) {
-        const setId = payload.meta?.id
-          ?? new URLSearchParams(location.search).get('set')
-          ?? 'default';
-        storageKey = `memizy_learn_progress::${setId}`;
-        loadPersistedProgress();
-        standaloneControls.style.display = '';
-      }
+      wrap.appendChild(result);
+      addHintsAndExplanation(item, wrap);
+      return wrap;
+    }
 
-      populateTopicSelect(allItems);
-      renderAll(allItems);
-    });
-
-    // ── onAborted ────────────────────────────────────────────────────────
-    plugin.onAborted(() => {
-      sessionActive = false;
-      finishBtn.disabled = true;
-    });
-
-    // ── onResumed ────────────────────────────────────────────────────────
-    plugin.onResumed(() => {
-      sessionActive = true;
-    });
-
-    // ── Topic select population ───────────────────────────────────────────
     function populateTopicSelect(items) {
+      topicSelect.innerHTML = '<option value="all" selected>All Topics</option>';
       const seen = new Set();
       const ordered = [];
       for (const item of items) {
         const t = item.topic;
-        if (t && !seen.has(t)) { seen.add(t); ordered.push(t); }
+        if (t && !seen.has(t)) {
+          seen.add(t);
+          ordered.push(t);
+        }
       }
       ordered.forEach(topic => {
         const opt = document.createElement('option');
@@ -543,24 +823,98 @@
         topicSelect.appendChild(opt);
       });
 
-      topicSelect.addEventListener('change', () => {
-        const val = topicSelect.value;
-        const filtered = val === 'all' ? allItems : allItems.filter(i => i.topic === val);
-        renderAll(filtered);
-      });
+      if (!topicListenerBound) {
+        topicSelect.addEventListener('change', () => {
+          const val = topicSelect.value;
+          const filtered = val === 'all' ? allItems : allItems.filter(i => i.topic === val);
+          renderAll(filtered);
+        });
+        topicListenerBound = true;
+      }
     }
 
-    // ── Render all items (grouped by topic) ───────────────────────────────
+    function createTrafficLights(item, currentColor, detailsEl) {
+      const wrap = document.createElement('div');
+      wrap.className = 'traffic-lights';
+      wrap.style.marginTop = '18px';
+      wrap.style.marginRight = '0';
+
+      ['red', 'orange', 'yellow', 'green'].forEach(color => {
+        const dot = document.createElement('div');
+        dot.className = `dot ${color}${currentColor === color ? ' active' : ''}`;
+        dot.title = COLOR_LABEL[color];
+        dot.addEventListener('click', async e => {
+          e.preventDefault();
+          e.stopPropagation();
+          await handleDotClick(item.id, color, detailsEl);
+        });
+        wrap.appendChild(dot);
+      });
+      return wrap;
+    }
+
+    function buildItemElement(item) {
+      const currentColor = bucketToColor(progress[item.id]?.bucket);
+
+      const details = document.createElement('details');
+      details.dataset.id = item.id;
+      details.dataset.color = currentColor;
+
+      const summary = document.createElement('summary');
+      const textSpan = document.createElement('span');
+      textSpan.className = 'summary-text';
+      textSpan.textContent = item.title || item.question || item.front || item.type || 'Untitled';
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'summary-icon';
+      summary.appendChild(textSpan);
+      summary.appendChild(iconSpan);
+
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'content';
+      contentDiv.appendChild(createInteractiveBody(item));
+      contentDiv.appendChild(createTrafficLights(item, currentColor, details));
+
+      details.appendChild(summary);
+      details.appendChild(contentDiv);
+      return details;
+    }
+
+    async function handleDotClick(itemId, color, detailsEl) {
+      if (!sessionActive) return;
+      const newBucket = COLOR_TO_BUCKET[color];
+      const currentProgress = progress[itemId] || { stats: { attempts: 0, incorrect: 0, streak: 0 } };
+      const previousStats = currentProgress.stats || { attempts: 0, incorrect: 0, streak: 0 };
+      const updated = {
+        ...currentProgress,
+        bucket: newBucket,
+        stats: {
+          attempts: (previousStats.attempts || 0) + 1,
+          incorrect: (previousStats.incorrect || 0) + (newBucket <= 2 ? 1 : 0),
+          streak: newBucket >= 3 ? (previousStats.streak || 0) + 1 : 0,
+        },
+      };
+
+      await sdk.store.syncProgress({ [itemId]: updated });
+      progress[itemId] = updated;
+
+      detailsEl.dataset.color = color;
+      detailsEl.querySelectorAll('.dot').forEach(dot => {
+        dot.classList.toggle('active', dot.classList.contains(color));
+      });
+
+      const answered = getAssessedCount();
+      updateProgressText(answered, allItems.length);
+      applyFilters();
+    }
+
     function renderAll(items) {
       contentArea.innerHTML = '';
-
       if (!items || items.length === 0) {
         contentArea.innerHTML = '<p style="text-align:center;color:#7f8c8d;">No items to display.</p>';
         updateCount();
         return;
       }
 
-      // Group by topic while keeping insertion order
       const groups = new Map();
       for (const item of items) {
         const t = item.topic || 'Other';
@@ -572,13 +926,11 @@
         const h2 = document.createElement('h2');
         h2.textContent = topic || 'Other';
         contentArea.appendChild(h2);
-
         for (const item of groupItems) {
           contentArea.appendChild(buildItemElement(item));
         }
       }
 
-      // Typeset math
       if (window.MathJax) {
         MathJax.typesetPromise([contentArea]).catch(e => console.warn('MathJax:', e));
       }
@@ -586,87 +938,8 @@
       applyFilters();
     }
 
-    // ── Build a single <details> element ──────────────────────────────────
-    function buildItemElement(item) {
-      const currentColor = progress[item.id] || 'unmarked';
-
-      const details = document.createElement('details');
-      details.dataset.id = item.id;
-      details.dataset.color = currentColor;
-
-      // Summary
-      const summary = document.createElement('summary');
-
-      // Traffic lights
-      const lightsDiv = document.createElement('div');
-      lightsDiv.className = 'traffic-lights';
-      lightsDiv.onclick = e => e.preventDefault();
-
-      ['red', 'orange', 'yellow', 'green'].forEach(color => {
-        const dot = document.createElement('div');
-        dot.className = `dot ${color}${currentColor === color ? ' active' : ''}`;
-        dot.title = { red: 'Don\'t Know', orange: 'Partially Know', yellow: 'Almost Know', green: 'Know Well' }[color];
-        dot.onclick = e => { e.stopPropagation(); handleDotClick(item.id, color, details); };
-        lightsDiv.appendChild(dot);
-      });
-
-      const textSpan = document.createElement('span');
-      textSpan.className = 'summary-text';
-      textSpan.textContent = item.title || 'Untitled';
-
-      const iconSpan = document.createElement('span');
-      iconSpan.className = 'summary-icon';
-
-      summary.appendChild(lightsDiv);
-      summary.appendChild(textSpan);
-      summary.appendChild(iconSpan);
-
-      // Content
-      const contentDiv = document.createElement('div');
-      contentDiv.className = 'content';
-      contentDiv.innerHTML = renderMarkdown(item.content || '');
-
-      details.appendChild(summary);
-      details.appendChild(contentDiv);
-      return details;
-    }
-
-    // ── Dot click handler ─────────────────────────────────────────────────
-    function handleDotClick(id, color, detailsEl) {
-      if (!sessionActive) return;
-
-      const prev = detailsEl.dataset.color;
-      const newColor = prev === color ? 'unmarked' : color;
-
-      // Update in-memory state (Host owns persistent storage)
-      if (newColor === 'unmarked') delete progress[id]; else progress[id] = newColor;
-      detailsEl.dataset.color = newColor;
-
-      detailsEl.querySelectorAll('.dot').forEach(dot => {
-        dot.classList.toggle('active', dot.classList.contains(newColor));
-      });
-
-      // Report answer to Host via SDK
-      if (newColor !== 'unmarked') {
-        plugin.answer(id, COLOR_CORRECT[newColor], { confidence: COLOR_CONFIDENCE[newColor] });
-      }
-
-      // Persist to localStorage in standalone mode
-      persistProgress();
-
-      // Push progress to Host HUD
-      const answered = Object.keys(progress).length;
-      plugin.updateProgress(answered, allItems.length);
-      updateProgressText(answered, allItems.length);
-
-      applyFilters();
-    }
-
-    // ── Filter logic ──────────────────────────────────────────────────────
     function applyFilters() {
-      const active = new Set(
-        Array.from(filterCBs).filter(cb => cb.checked).map(cb => cb.value)
-      );
+      const active = new Set(Array.from(filterCBs).filter(cb => cb.checked).map(cb => cb.value));
       const allDetails = contentArea.querySelectorAll('details');
       let shown = 0;
       allDetails.forEach(d => {
@@ -692,7 +965,6 @@
 
     filterCBs.forEach(cb => cb.addEventListener('change', applyFilters));
 
-    // ── Export / Import (standalone only) ────────────────────────────────
     exportBtn.addEventListener('click', () => {
       const data = JSON.stringify(progress);
       if (!data || data === '{}') {
@@ -702,34 +974,70 @@
       prompt('Copy this text to save or transfer your progress:', data);
     });
 
-    importBtn.addEventListener('click', () => {
+    importBtn.addEventListener('click', async () => {
       const raw = prompt('Paste exported progress data:');
       if (!raw) return;
       try {
         const parsed = JSON.parse(raw);
         if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error();
-        // Replace in-memory progress
-        for (const k of Object.keys(progress)) delete progress[k];
-        Object.assign(progress, parsed);
-        persistProgress();
-        // Re-render from scratch so all dot states reflect imported data
+        await sdk.store.syncProgress(parsed);
+        syncProgressSnapshot();
         topicSelect.value = 'all';
         renderAll(allItems);
-        const answered = Object.keys(progress).length;
+        const answered = getAssessedCount();
         updateProgressText(answered, allItems.length);
       } catch {
         alert('Error: could not parse progress data. Make sure you pasted the full exported text.');
       }
     });
 
-    // ── Finish Session ────────────────────────────────────────────────────
-    finishBtn.addEventListener('click', () => {
+    finishBtn.addEventListener('click', async () => {
       if (!sessionActive) return;
       sessionActive = false;
       finishBtn.disabled = true;
-      const answered = Object.keys(progress).length;
-      plugin.complete({ score: answered / (allItems.length || 1) });
+      const answered = getAssessedCount();
+      const score = Math.round((answered / (allItems.length || 1)) * 100);
+      await sdk.sys.exit({ score });
     });
+
+    sdk.onSessionAborted(() => {
+      sessionActive = false;
+      finishBtn.disabled = true;
+    });
+
+    sdk.onSetUpdated(() => {
+      const payload = sdk.session;
+      if (!payload) return;
+      allItems = payload.items || [];
+      syncProgressSnapshot();
+      populateTopicSelect(allItems);
+      renderAll(allItems);
+      updateProgressText(getAssessedCount(), allItems.length);
+    });
+
+    async function init() {
+      try {
+        const session = await sdk.connect();
+        allItems = session.items || [];
+        sessionActive = true;
+        finishBtn.disabled = false;
+
+        currentSetTitle = session.meta?.title ?? session.meta?.name ?? session.settings?.title ?? currentSetTitle;
+        document.title = currentSetTitle;
+        document.querySelector('h1').textContent = currentSetTitle;
+
+        syncProgressSnapshot();
+        if (sdk.isStandalone) standaloneControls.style.display = '';
+        populateTopicSelect(allItems);
+        renderAll(allItems);
+        updateProgressText(getAssessedCount(), allItems.length);
+      } catch (error) {
+        console.error(error);
+        contentArea.innerHTML = '<p style="text-align:center;color:#c0392b;">Failed to initialize Learn Plugin session.</p>';
+      }
+    }
+
+    init();
   </script>
 </body>
 
