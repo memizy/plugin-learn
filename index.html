@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,19 +11,32 @@
     "$schema": "https://cdn.jsdelivr.net/gh/memizy/oqse-specification@main/schemas/oqse-manifest-v0.1.json",
     "version": "0.1",
     "pluginVersion": "0.1.0",
-    "id": "https://memizy.github.io/plugin-let-me-in/",
-    "appName": "Let Me In!",
-    "description": "A 3D FPS + Tower Defense + Quiz game where you defend a library by answering questions to earn money for towers.",
+    "id": "https://memizy.github.io/plugin-learn/",
+    "appName": "Learn Plugin",
+    "description": "Browse study set items grouped by topic. Self-assess your knowledge with traffic-light confidence dots.",
     "author": {
       "name": "Memizy"
     },
     "license": "MIT",
-    "emoji": "🏰",
-    "studyMode": "game",
-    "questionDensity": "medium",
+    "emoji": "📖",
+    "studyMode": "drill",
     "capabilities": {
       "actions": ["render"],
-      "types": ["mcq-single"]
+      "types": [
+        "flashcard",
+        "mcq-single",
+        "mcq-multi",
+        "true-false",
+        "match-pairs",
+        "sort-items",
+        "short-answer",
+        "note"
+      ],
+      "features": [
+        "markdown",
+        "math",
+        "html"
+      ]
     }
   }
   </script>
@@ -35,7 +49,9 @@
   </script>
   <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Source+Code+Pro:wght@500&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Source+Code+Pro:wght@500&display=swap"
+    rel="stylesheet">
 
   <style>
     :root {
@@ -85,12 +101,12 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       margin-bottom: 20px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
       transition: all 0.3s ease;
     }
 
     details[open] {
-      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
       border-left: 5px solid var(--accent);
     }
 
@@ -115,7 +131,9 @@
       color: var(--accent);
     }
 
-    summary::-webkit-details-marker { display: none; }
+    summary::-webkit-details-marker {
+      display: none;
+    }
 
     .summary-text {
       flex-grow: 1;
@@ -131,8 +149,13 @@
       text-align: center;
     }
 
-    details[open] .summary-icon::after { content: '-'; }
-    details:not([open]) .summary-icon::after { content: '+'; }
+    details[open] .summary-icon::after {
+      content: '-';
+    }
+
+    details:not([open]) .summary-icon::after {
+      content: '+';
+    }
 
     .content {
       padding: 30px;
@@ -161,10 +184,17 @@
       font-size: 0.9em;
     }
 
-    ul { padding-left: 20px; }
-    li { margin-bottom: 8px; }
+    ul {
+      padding-left: 20px;
+    }
 
-    strong { color: var(--primary); }
+    li {
+      margin-bottom: 8px;
+    }
+
+    strong {
+      color: var(--primary);
+    }
 
     /* Controls */
     .controls-container {
@@ -183,7 +213,9 @@
       margin-bottom: 15px;
     }
 
-    .controls-row:last-child { margin-bottom: 0; }
+    .controls-row:last-child {
+      margin-bottom: 0;
+    }
 
     select {
       padding: 10px;
@@ -205,7 +237,9 @@
       transition: background-color 0.2s;
     }
 
-    button:hover { background-color: #2980b9; }
+    button:hover {
+      background-color: #2980b9;
+    }
 
     .finish-row {
       margin-top: 40px;
@@ -220,7 +254,9 @@
       border-radius: 6px;
     }
 
-    #finish-btn:hover { background-color: #219150; }
+    #finish-btn:hover {
+      background-color: #219150;
+    }
 
     #finish-btn:disabled {
       background-color: var(--dot-grey);
@@ -255,10 +291,21 @@
       transform: scale(1.1);
     }
 
-    .dot.red    { background-color: var(--dot-red); }
-    .dot.orange { background-color: var(--dot-orange); }
-    .dot.yellow { background-color: var(--dot-yellow); }
-    .dot.green  { background-color: var(--dot-green); }
+    .dot.red {
+      background-color: var(--dot-red);
+    }
+
+    .dot.orange {
+      background-color: var(--dot-orange);
+    }
+
+    .dot.yellow {
+      background-color: var(--dot-yellow);
+    }
+
+    .dot.green {
+      background-color: var(--dot-green);
+    }
 
     /* Filters */
     .filters {
@@ -269,7 +316,10 @@
       font-size: 0.9rem;
     }
 
-    .filter-label { font-weight: bold; margin-right: 5px; }
+    .filter-label {
+      font-weight: bold;
+      margin-right: 5px;
+    }
 
     .filter-option {
       display: flex;
@@ -291,12 +341,24 @@
         gap: 8px;
         margin-right: 10px;
       }
-      .dot { width: 20px; height: 20px; }
-      summary { align-items: flex-start; }
-      .summary-text { padding-top: 0; align-self: center; }
+
+      .dot {
+        width: 20px;
+        height: 20px;
+      }
+
+      summary {
+        align-items: flex-start;
+      }
+
+      .summary-text {
+        padding-top: 0;
+        align-self: center;
+      }
     }
   </style>
 </head>
+
 <body>
 
   <h1>Learn Plugin</h1>
@@ -337,15 +399,19 @@
       <span id="visible-count" style="margin-left: auto; font-weight: 500; color: #7f8c8d;"></span>
     </div>
 
-    <div class="controls-row" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); align-items: center;">
+    <div class="controls-row"
+      style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); align-items: center;">
       <span class="filter-label">Progress:</span>
       <span id="progress-text" style="font-size: 0.9rem; color: #7f8c8d;">—</span>
     </div>
 
-    <div id="standalone-controls" class="controls-row" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);">
+    <div id="standalone-controls" class="controls-row"
+      style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);">
       <span class="filter-label">Saved:</span>
-      <button id="export-btn" style="background-color: #7f8c8d; font-size: 0.9rem; padding: 8px 15px;">Export Progress</button>
-      <button id="import-btn" style="background-color: #7f8c8d; font-size: 0.9rem; padding: 8px 15px;">Import Progress</button>
+      <button id="export-btn" style="background-color: #7f8c8d; font-size: 0.9rem; padding: 8px 15px;">Export
+        Progress</button>
+      <button id="import-btn" style="background-color: #7f8c8d; font-size: 0.9rem; padding: 8px 15px;">Import
+        Progress</button>
     </div>
 
   </div>
@@ -368,15 +434,15 @@
     });
 
     // ── DOM refs ─────────────────────────────────────────────────────────────
-    const topicSelect         = document.getElementById('topic-select');
-    const contentArea         = document.getElementById('content-area');
-    const filterCBs           = document.querySelectorAll('.filter-cb');
-    const visibleCount        = document.getElementById('visible-count');
-    const progressText        = document.getElementById('progress-text');
-    const finishBtn           = document.getElementById('finish-btn');
-    const standaloneControls  = document.getElementById('standalone-controls');
-    const exportBtn           = document.getElementById('export-btn');
-    const importBtn           = document.getElementById('import-btn');
+    const topicSelect = document.getElementById('topic-select');
+    const contentArea = document.getElementById('content-area');
+    const filterCBs = document.querySelectorAll('.filter-cb');
+    const visibleCount = document.getElementById('visible-count');
+    const progressText = document.getElementById('progress-text');
+    const finishBtn = document.getElementById('finish-btn');
+    const standaloneControls = document.getElementById('standalone-controls');
+    const exportBtn = document.getElementById('export-btn');
+    const importBtn = document.getElementById('import-btn');
 
     // ── Markdown + Math rendering ─────────────────────────────────────────
     if (window.marked) {
@@ -397,7 +463,7 @@
 
     // ── Colour → SDK confidence mapping ──────────────────────────────────
     const COLOR_CONFIDENCE = { red: 1, orange: 1, yellow: 2, green: 3 };
-    const COLOR_CORRECT    = { red: false, orange: false, yellow: true, green: true };
+    const COLOR_CORRECT = { red: false, orange: false, yellow: true, green: true };
 
     // ── In-memory progress ────────────────────────────────────────────────
     // Standalone: also persisted to localStorage per set ID.
@@ -525,7 +591,7 @@
       const currentColor = progress[item.id] || 'unmarked';
 
       const details = document.createElement('details');
-      details.dataset.id    = item.id;
+      details.dataset.id = item.id;
       details.dataset.color = currentColor;
 
       // Summary
@@ -545,7 +611,7 @@
       });
 
       const textSpan = document.createElement('span');
-      textSpan.className   = 'summary-text';
+      textSpan.className = 'summary-text';
       textSpan.textContent = item.title || 'Untitled';
 
       const iconSpan = document.createElement('span');
@@ -569,7 +635,7 @@
     function handleDotClick(id, color, detailsEl) {
       if (!sessionActive) return;
 
-      const prev     = detailsEl.dataset.color;
+      const prev = detailsEl.dataset.color;
       const newColor = prev === color ? 'unmarked' : color;
 
       // Update in-memory state (Host owns persistent storage)
@@ -666,4 +732,5 @@
     });
   </script>
 </body>
+
 </html>
