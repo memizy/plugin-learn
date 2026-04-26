@@ -74,6 +74,14 @@ This plugin requires the study set to contain items of the `note` type.
         "math",
         "html"
       ]
+    },
+    "appSpecific": {
+      "memizy": {
+        "pluginSdk": {
+          "apiVersion": "0.3",
+          "minimumHostApiVersion": "0.3"
+        }
+      }
     }
   }
 
