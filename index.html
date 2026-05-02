@@ -642,6 +642,7 @@
         return 'MATHPH' + (blocks.length - 1) + 'MATHPH';
       };
       let t = input.replace(/\$\$([\s\S]*?)\$\$/g, store);
+      t = t.replace(/\\\[([\s\S]*?)\\\]/g, store);
       t = t.replace(/\$([^$\n]+?)\$/g, store);
       t = t.replace(/\\\(([\s\S]*?)\\\)/g, store);
       let html;
