@@ -36,7 +36,8 @@
         "markdown",
         "math",
         "html"
-      ]
+      ],
+      "assets": { "image": ["*"], "audio": ["*"], "video": ["*"], "model": null }
     },
     "appSpecific": {
       "memizy": {
@@ -50,6 +51,7 @@
   </script>
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <script>
     window.MathJax = {
       tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }
@@ -205,6 +207,13 @@
 
     li {
       margin-bottom: 8px;
+    }
+
+    .content img,
+    #content-area img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
     }
 
     strong {
@@ -556,19 +565,44 @@
       marked.setOptions({ breaks: true, gfm: true });
     }
 
+    function parseMarkdownPreservingOqseTokens(md) {
+      if (!window.marked) return md;
+      const TOKEN_RE = /\[\[__OQSE_TOKEN_[a-z0-9]+__\]\]/gi;
+      const vault = [];
+      const safe = md.replace(TOKEN_RE, (full) => {
+        vault.push(full);
+        return `\n<!--OQSE-TOKEN-${vault.length - 1}-->\n`;
+      });
+      let html = window.marked.parse(safe);
+      for (let i = 0; i < vault.length; i++) {
+        html = html.split(`<!--OQSE-TOKEN-${i}-->`).join(vault[i]);
+      }
+      return html;
+    }
+
     function renderMarkdown(text) {
       const input = String(text || '');
-      if (!window.marked) return input;
       const blocks = [];
-      const store = m => {
+      const store = (m) => {
         blocks.push(m);
         return 'MATHPH' + (blocks.length - 1) + 'MATHPH';
       };
       let t = input.replace(/\$\$([\s\S]*?)\$\$/g, store);
       t = t.replace(/\$([^$\n]+?)\$/g, store);
       t = t.replace(/\\\(([\s\S]*?)\\\)/g, store);
-      let html = marked.parse(t);
-      html = html.replace(/MATHPH(\d+)MATHPH/g, (_, i) => blocks[+i]);
+      let html;
+      try {
+        html = sdk.text.renderHtml(t, {
+          markdownParser: (s) => parseMarkdownPreservingOqseTokens(s),
+          sanitizer: (h) => (window.DOMPurify ? window.DOMPurify.sanitize(h) : h),
+          requirements: { features: ['markdown', 'math', 'html'] },
+        });
+      } catch (err) {
+        console.warn('renderMarkdown fallback', err);
+        html = window.marked ? window.marked.parse(t) : t;
+        if (window.DOMPurify) html = window.DOMPurify.sanitize(String(html));
+      }
+      html = String(html).replace(/MATHPH(\d+)MATHPH/g, (_, i) => blocks[+i] || '');
       return html;
     }
 
