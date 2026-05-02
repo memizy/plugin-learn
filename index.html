@@ -560,6 +560,8 @@
     let topicListenerBound = false;
     let currentSetTitle = 'Learn Plugin';
     let currentSetId = '';
+    const resolvedAssetUrls = {};
+    const ownedObjectUrls = new Set();
 
     if (window.marked) {
       marked.setOptions({ breaks: true, gfm: true });
@@ -570,14 +572,66 @@
       const TOKEN_RE = /\[\[__OQSE_TOKEN_[a-z0-9]+__\]\]/gi;
       const vault = [];
       const safe = md.replace(TOKEN_RE, (full) => {
+        const ph = `\uE000OQSE${vault.length}\uE001`;
         vault.push(full);
-        return `\n<!--OQSE-TOKEN-${vault.length - 1}-->\n`;
+        return ph;
       });
       let html = window.marked.parse(safe);
+      if (typeof html !== 'string') return md;
       for (let i = 0; i < vault.length; i++) {
-        html = html.split(`<!--OQSE-TOKEN-${i}-->`).join(vault[i]);
+        html = html.split(`\uE000OQSE${i}\uE001`).join(vault[i]);
       }
       return html;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function isAbsoluteAssetUrl(value) {
+      return /^(https?:|blob:|data:)/i.test(String(value || ''));
+    }
+
+    function renderAssetHtml(_key, media) {
+      if (!media) return '';
+      const rawUrl = resolvedAssetUrls[_key] || media.value || '';
+      const url = escapeHtml(rawUrl);
+      const alt = escapeHtml(media.altText || '');
+      if (media.type === 'image') return `<img src="${url}" alt="${alt}" class="oqse-asset-img" />`;
+      if (media.type === 'audio') return `<audio src="${url}" controls class="oqse-asset-audio"></audio>`;
+      if (media.type === 'video') return `<video src="${url}" controls class="oqse-asset-video"></video>`;
+      return '';
+    }
+
+    async function warmupLocalAssetUrls() {
+      const allAssets = sdk.assets.all();
+      for (const [key, media] of Object.entries(allAssets)) {
+        const currentValue = media?.value;
+        if (!currentValue || isAbsoluteAssetUrl(currentValue)) continue;
+        try {
+          const raw = await sdk.assets.getRaw(key);
+          const previous = resolvedAssetUrls[key];
+          if (previous && ownedObjectUrls.has(previous)) {
+            URL.revokeObjectURL(previous);
+            ownedObjectUrls.delete(previous);
+          }
+          const objectUrl = URL.createObjectURL(raw);
+          resolvedAssetUrls[key] = objectUrl;
+          ownedObjectUrls.add(objectUrl);
+        } catch {
+          // Ignore missing raw payloads and keep the original media.value.
+        }
+      }
+    }
+
+    function cleanupObjectUrls() {
+      for (const url of ownedObjectUrls) URL.revokeObjectURL(url);
+      ownedObjectUrls.clear();
     }
 
     function renderMarkdown(text) {
@@ -596,6 +650,7 @@
           markdownParser: (s) => parseMarkdownPreservingOqseTokens(s),
           sanitizer: (h) => (window.DOMPurify ? window.DOMPurify.sanitize(h) : h),
           requirements: { features: ['markdown', 'math', 'html'] },
+          assetReplacer: (key, media) => renderAssetHtml(key, media),
         });
       } catch (err) {
         console.warn('renderMarkdown fallback', err);
@@ -1232,17 +1287,22 @@
     sdk.onSetUpdated(() => {
       const payload = sdk.session;
       if (!payload) return;
-      allItems = payload.items || [];
-      currentSetId = payload.setMeta?.id || sdk.store.getMeta?.()?.id || '';
-      syncProgressSnapshot();
-      populateTopicSelect(allItems);
-      renderAll(allItems);
-      updateBucketStats();
+      const apply = async () => {
+        await warmupLocalAssetUrls();
+        allItems = payload.items || [];
+        currentSetId = payload.setMeta?.id || sdk.store.getMeta?.()?.id || '';
+        syncProgressSnapshot();
+        populateTopicSelect(allItems);
+        renderAll(allItems);
+        updateBucketStats();
+      };
+      void apply();
     });
 
     async function init() {
       try {
         const session = await sdk.connect();
+        await warmupLocalAssetUrls();
         allItems = session.items || [];
         sessionActive = true;
 
@@ -1262,6 +1322,7 @@
     }
 
     init();
+    window.addEventListener('beforeunload', cleanupObjectUrls);
   </script>
 </body>
 
