@@ -35,7 +35,8 @@
       "features": [
         "markdown",
         "math",
-        "html"
+        "html",
+        "mermaid"
       ],
       "assets": { "image": ["*"], "audio": ["*"], "video": ["*"], "model": null }
     },
@@ -561,6 +562,9 @@
 
   <script type="module">
     import { MemizySDK } from '@memizy/plugin-sdk';
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+
+    mermaid.initialize({ startOnLoad: false });
 
     const sdk = new MemizySDK({
       id: 'https://memizy.github.io/plugin-learn/',
@@ -1257,6 +1261,21 @@
 
       if (window.MathJax) {
         MathJax.typesetPromise([contentArea]).catch(e => console.warn('MathJax:', e));
+      }
+
+      // Process Mermaid diagrams
+      const mermaidBlocks = contentArea.querySelectorAll('code.language-mermaid');
+      if (mermaidBlocks.length > 0) {
+        mermaidBlocks.forEach((block) => {
+          const container = document.createElement('div');
+          container.className = 'mermaid';
+          container.textContent = block.textContent; 
+          
+          const pre = block.parentElement;
+          pre.parentNode.replaceChild(container, pre);
+        });
+        
+        mermaid.run({ querySelector: '.mermaid' }).catch(e => console.warn('Mermaid Error:', e));
       }
 
       applyFilters();
