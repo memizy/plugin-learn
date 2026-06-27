@@ -600,6 +600,20 @@
       marked.setOptions({ breaks: true, gfm: true });
     }
 
+    // --- NOVÁ FUNKCE PRO BEZPEČNÉ VYKRESLENÍ MERMAIDU ---
+    function renderVisibleMermaid() {
+      // Najdeme jen ty grafy, které ještě nejsou vykreslené a jsou už fyzicky vidět
+      const unrendered = Array.from(document.querySelectorAll('.mermaid:not([data-processed="true"])'))
+        .filter(el => {
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        });
+
+      if (unrendered.length > 0) {
+        mermaid.run({ nodes: unrendered }).catch(e => console.warn('Mermaid Error:', e));
+      }
+    }
+
     function parseMarkdownPreservingOqseTokens(md) {
       if (!window.marked) return md;
       const TOKEN_RE = /\[\[__OQSE_TOKEN_[a-z0-9]+__\]\]/gi;
@@ -759,6 +773,11 @@
           hintDetails.appendChild(summary);
           hintDetails.appendChild(content);
           hintsWrap.appendChild(hintDetails);
+
+          // Pokud se otevře hint, možná v něm je mermaid
+          hintDetails.addEventListener('toggle', () => {
+            if (hintDetails.open) setTimeout(renderVisibleMermaid, 50);
+          });
         });
 
         hintsSection.appendChild(hintsWrap);
@@ -779,11 +798,14 @@
           const isVisible = hidden.style.display !== 'none';
           hidden.style.display = isVisible ? 'none' : 'block';
           btn.textContent = isVisible ? 'Show Explanation' : 'Hide Explanation';
+          // Vykreslení případného mermaidu po zobrazení
+          if (!isVisible) setTimeout(renderVisibleMermaid, 50);
         });
 
         revealExplanation = () => {
           hidden.style.display = 'block';
           btn.textContent = 'Hide Explanation';
+          setTimeout(renderVisibleMermaid, 50);
         };
 
         expSection.appendChild(btn);
@@ -820,8 +842,10 @@
           hidden.innerHTML = renderMarkdown(item.hiddenContent);
           revealBtn.addEventListener('click', () => {
             const visible = hidden.style.display !== 'none';
-            hidden.style.display = visible ? 'none' : '';
+            hidden.style.display = visible ? 'none' : 'block';
             revealBtn.textContent = visible ? 'Reveal Hidden Content' : 'Hide Hidden Content';
+            // Pokud jsme to právě zviditelnili, necháme Mermaid vykreslit grafy
+            if (!visible) setTimeout(renderVisibleMermaid, 50);
           });
           wrap.appendChild(revealBtn);
           wrap.appendChild(hidden);
@@ -847,6 +871,8 @@
 
         container.addEventListener('click', () => {
           container.classList.toggle('flipped');
+          // Když se karta otočí, zkontrolujeme jestli vzadu není mermaid
+          setTimeout(renderVisibleMermaid, 300);
         });
 
         wrap.appendChild(container);
@@ -1205,6 +1231,12 @@
 
       details.appendChild(summary);
       details.appendChild(contentDiv);
+
+      // Když se otevře hlavní detail pro celou poznámku, chceme vykreslit Mermaid
+      details.addEventListener('toggle', () => {
+        if (details.open) setTimeout(renderVisibleMermaid, 50);
+      });
+
       return details;
     }
 
@@ -1263,22 +1295,22 @@
         MathJax.typesetPromise([contentArea]).catch(e => console.warn('MathJax:', e));
       }
 
-      // Process Mermaid diagrams
+      // Příprava kontejnerů pro Mermaid
       const mermaidBlocks = contentArea.querySelectorAll('code.language-mermaid');
       if (mermaidBlocks.length > 0) {
         mermaidBlocks.forEach((block) => {
           const container = document.createElement('div');
           container.className = 'mermaid';
-          container.textContent = block.textContent; 
-          
+          container.textContent = block.textContent;
+
           const pre = block.parentElement;
           pre.parentNode.replaceChild(container, pre);
         });
-        
-        mermaid.run({ querySelector: '.mermaid' }).catch(e => console.warn('Mermaid Error:', e));
       }
 
       applyFilters();
+      // Pokus o vykreslení těch, které jsou aktuálně rozbalené (pokud vůbec nějaké jsou)
+      setTimeout(renderVisibleMermaid, 50);
     }
 
     function applyFilters() {
